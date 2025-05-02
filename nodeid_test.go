@@ -8,49 +8,63 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGet(t *testing.T) {
+func TestGetNoInterfaces(t *testing.T) {
 	netInterfaceAddrs = func() ([]net.Addr, error) {
-		return nil, errors.New("test error")
+		return nil, nil
 	}
-
-	id0, err := Get()
+	_, err := Get()
 	assert.Error(t, err)
-	assert.Equal(t, -1, id0)
+	assert.Equal(t, "no valid IPv4 address found", err.Error())
+}
 
+func TestGetLoopbackOnly(t *testing.T) {
 	netInterfaceAddrs = func() ([]net.Addr, error) {
 		return []net.Addr{
-			&net.IPNet{
-				IP:   net.IPv4(127, 0, 0, 1),
-				Mask: net.IPMask{255, 255, 255, 0},
-			},
+			&net.IPNet{IP: net.ParseIP("127.0.0.1")},
 		}, nil
 	}
-
-	id1, err := Get()
+	_, err := Get()
 	assert.Error(t, err)
-	assert.Equal(t, -1, id1)
+	assert.Equal(t, "no valid IPv4 address found", err.Error())
+}
 
+func TestGetValidIPv4(t *testing.T) {
 	netInterfaceAddrs = func() ([]net.Addr, error) {
 		return []net.Addr{
-			&net.IPNet{
-				IP:   net.IPv4(192, 168, 0, 120),
-				Mask: net.IPMask{255, 255, 255, 0},
-			},
+			&net.IPNet{IP: net.ParseIP("192.168.1.1")},
 		}, nil
 	}
-	id2, err := Get()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, 120, id2)
+	id, err := Get()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(3232235777), id) // 192.168.1.1 -> 3232235777
+}
 
+func TestGetErrorFromNetInterfaceAddrs(t *testing.T) {
+	netInterfaceAddrs = func() ([]net.Addr, error) {
+		return nil, errors.New("mock error")
+	}
+	_, err := Get()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "mock error")
+}
+
+func TestMustGetValidIPv4(t *testing.T) {
 	netInterfaceAddrs = func() ([]net.Addr, error) {
 		return []net.Addr{
-			&net.IPNet{
-				IP:   net.IPv4(192, 168, 9, 120),
-				Mask: net.IPMask{255, 255, 255, 0},
-			},
+			&net.IPNet{IP: net.ParseIP("192.168.1.1")},
 		}, nil
 	}
-	id3, err := Get()
-	assert.Equal(t, nil, err)
-	assert.Equal(t, 2424, id3)
+	assert.NotPanics(t, func() {
+		id := MustGet()
+		assert.Equal(t, int64(3232235777), id) // 192.168.1.1 -> 3232235777
+	})
+}
+
+func TestMustGetPanics(t *testing.T) {
+	netInterfaceAddrs = func() ([]net.Addr, error) {
+		return nil, nil
+	}
+	assert.Panics(t, func() {
+		MustGet()
+	})
 }
